@@ -1,9 +1,13 @@
 import argparse
 import json
-
+import pprint
 import boto3
 
+from event_processing.sns_client_wrapper import SNSClientWrapper
+from event_processing.sqs_client_wrapper import SQSClientWrapper
+
 LOCATION_FILE_NAME = 'locations.json'
+REGION_NAME = 'eu-west-1'
 
 
 class EventProcessing:
@@ -19,61 +23,23 @@ class EventProcessing:
 
         self.locations_list = []
 
+        self.sqs_client_wrapper = SQSClientWrapper(self.sns_topic_name)
+        self.sns_client_wrapper = SNSClientWrapper(self.sns_topic_name)
+
     def run(self):
         self.bucket.download_file(LOCATION_FILE_NAME, LOCATION_FILE_NAME)
 
-        self.populate_locations_dict()
+        self.populate_locations_list()
 
-        # set up sqs client and create queue
+        self.sns_client_wrapper.create_subscribe_request(self.sqs_client_wrapper)
 
-        sqs_client = boto3.client('sqs', region_name='eu-west-1')
+        pprint.pp(self.sqs_client_wrapper.receive_message())
 
-        create_queue_response = sqs_client.create_queue(QueueName='first_queue')
-        queue_url = create_queue_response['QueueUrl']
-        queue_arn = sqs_client.get_queue_attributes(
-            QueueUrl=queue_url,
-            AttributeNames=['QueueArn']
-        )['Attributes']['QueueArn']
+        self.sns_client_wrapper.create_unsubscribe_request()
 
-        # add permissions
+        self.sqs_client_wrapper.create_delete_queue_request()
 
-        policy_document = {
-            'Version': '2012-10-17',
-            'Statement': [{
-                'Sid': f'allow-subscription-{self.sns_topic_name}',
-                'Effect': 'Allow',
-                'Principal': {'AWS': '*'},
-                'Action': 'SQS:SendMessage',
-                'Resource': f'{queue_arn}',
-                'Condition': {
-                    'ArnEquals': {'aws:SourceArn': f'{self.sns_topic_name}'}
-                }
-            }]
-        }
-
-        policy_json = json.dumps(policy_document)
-
-        sns_client = boto3.client('sns', region_name='eu-west-1')
-
-        sqs_client.set_queue_attributes(
-            QueueUrl=queue_url,
-            Attributes={'Policy': policy_json}
-        )
-
-        subscribe_request = sns_client.subscribe(
-            TopicArn=self.sns_topic_name,
-            Protocol='sqs',
-            Endpoint=queue_arn,
-            ReturnSubscriptionArn=True
-        )
-
-        print(sqs_client.receive_message(QueueUrl=queue_url))
-
-        sns_client.unsubscribe(SubscriptionArn=subscribe_request['SubscriptionArn'])
-
-        sqs_client.delete_queue(QueueUrl=queue_url)
-
-    def populate_locations_dict(self):
+    def populate_locations_list(self):
         with open(LOCATION_FILE_NAME, 'r') as location_file:
             self.locations_list.extend(json.loads(location_file.read()))
 
