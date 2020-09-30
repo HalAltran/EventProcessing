@@ -36,8 +36,9 @@ class SQSClientWrapper:
             }]
         })
 
-    def receive_message(self):
-        return self.client.receive_message(QueueUrl=self.queue_url, WaitTimeSeconds=5)
+    def receive_message(self, max_number_of_messages):
+        return self.client.receive_message(QueueUrl=self.queue_url, WaitTimeSeconds=5,
+                                           MaxNumberOfMessages=max_number_of_messages)
 
     def create_delete_queue_request(self):
         self.client.delete_queue(QueueUrl=self.queue_url)
