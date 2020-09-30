@@ -23,7 +23,6 @@ class EventProcessing:
 
         self.bucket = self.get_bucket()
 
-        # self.locations_list = []
         self.locations = {}
 
         self.sqs_client_wrapper = SQSClientWrapper(self.sns_topic_name)
@@ -44,7 +43,6 @@ class EventProcessing:
             print('location id: %s' % location.id)
             for event in location.events:
                 print('event value: %f, event timestamp: %i' % (event.value, event.timestamp))
-        # pprint.pp(self.sqs_client_wrapper.receive_message())
 
         self.sns_client_wrapper.create_unsubscribe_request()
         self.sqs_client_wrapper.create_delete_queue_request()
@@ -55,7 +53,6 @@ class EventProcessing:
 
             for message in messages:
                 message_body = json.loads(message['Body'])
-                # message_id = message_body['MessageId']  # event id?
                 inner_message = json.loads(message_body['Message'])
                 event_id = inner_message['eventId']
                 location_id = inner_message['locationId']
@@ -63,7 +60,7 @@ class EventProcessing:
                     self.event_id_set.add(event_id)
                     self.locations[location_id].events.append(Event(inner_message))
 
-            # delete message batch. need receipt handle from message body?
+            self.sqs_client_wrapper.delete_received_messages(messages)
 
     def populate_locations_list(self):
         locations_data = []
@@ -72,7 +69,6 @@ class EventProcessing:
         for location_dict in locations_data:
             location = Location(location_dict)
             self.locations[location.id] = location
-            # self.locations_list.append(Location(location_dict))
 
     def get_bucket(self):
         session = boto3.Session(

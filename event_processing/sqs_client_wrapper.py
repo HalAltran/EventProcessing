@@ -1,4 +1,6 @@
 import json
+import pprint
+
 import boto3
 import event_processing.main as main
 
@@ -42,3 +44,20 @@ class SQSClientWrapper:
 
     def create_delete_queue_request(self):
         self.client.delete_queue(QueueUrl=self.queue_url)
+
+    def delete_received_messages(self, messages):
+
+        entries = []
+        for message in messages:
+            entries.append({
+                'Id': message['MessageId'],
+                'ReceiptHandle': message['ReceiptHandle']
+            })
+
+        self.client.delete_message_batch(
+            QueueUrl=self.queue_url,
+            Entries=entries
+        )
+
+        # print("Messages deleted successfully.")
+        # pprint.pp(entries)
