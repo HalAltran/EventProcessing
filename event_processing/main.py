@@ -42,13 +42,6 @@ class EventProcessing:
 
         self.process_messages()
 
-        # for location in self.locations.values():
-        #     print('location id: %s' % location.id)
-        #     for event in location.events:
-        #         print('event value: %f, event timestamp: %s' % (event.value,
-        #                                                         datetime.strftime(event.timestamp,
-        #                                                                           "%d/%m/%Y, %H:%M:%S")))
-
         self.sns_client_wrapper.create_unsubscribe_request()
         self.sqs_client_wrapper.create_delete_queue_request()
 
@@ -56,46 +49,51 @@ class EventProcessing:
 
         end_time = time.time() + 60 * 15
         time_of_printing = self.round_time_to_nearest_min(time.time()) + 60
-        while time.time() < end_time:
 
+        while time.time() < end_time:
             receive_messages_response = self.sqs_client_wrapper.receive_message(10)
 
             if 'Messages' in receive_messages_response:
-
                 messages = receive_messages_response['Messages']
 
                 for message in messages:
                     try:
-                        message_body = json.loads(message['Body'])
-                        inner_message = json.loads(message_body['Message'])
-                        event_id = inner_message['eventId']
-                        location_id = inner_message['locationId']
-                        if location_id in self.locations and event_id not in self.event_id_set:
-                            self.event_id_set.add(event_id)
-                            self.locations[location_id].events.append(Event(inner_message))
+                        self.add_event_to_corresponding_location(message)
                     except:
                         pass
 
                 if self.round_time_to_nearest_min(time.time()) >= time_of_printing:
-                    time_to_calculate = time_of_printing - 60 * 5
+                    self.print_average_values(time_of_printing)
                     time_of_printing = self.round_time_to_nearest_min(time.time()) + 60
 
-                    sum_of_values = 0
-                    value_count = 0
-                    for location in self.locations.values():
-                        for event in location.events:
-                            if event.time_rounded_to_minute == time_to_calculate:
-                                sum_of_values += event.value
-                                value_count += 1
-                    current_time = datetime.utcfromtimestamp(time_to_calculate + 3600)
-                    avg_value = 0
-                    if value_count != 0:
-                        avg_value = sum_of_values / value_count
-                    queue_size = self.sqs_client_wrapper.get_queue_size()
-                    print("time: %s; average value: %f; number of values: %i; queue size: %s" %
-                          (datetime.strftime(current_time, "%d/%m/%Y, %H:%M:%S"), avg_value, value_count, queue_size))
-
                 self.sqs_client_wrapper.delete_received_messages(messages)
+
+    def add_event_to_corresponding_location(self, message):
+        message_body = json.loads(message['Body'])
+        inner_message = json.loads(message_body['Message'])
+        event_id = inner_message['eventId']
+        location_id = inner_message['locationId']
+        if location_id in self.locations and event_id not in self.event_id_set:
+            self.event_id_set.add(event_id)
+            self.locations[location_id].events.append(Event(inner_message))
+
+    def print_average_values(self, time_of_printing):
+        time_to_calculate = time_of_printing - 60 * 5
+
+        sum_of_values = 0
+        value_count = 0
+        for location in self.locations.values():
+            for event in location.events:
+                if event.time_rounded_to_minute == time_to_calculate:
+                    sum_of_values += event.value
+                    value_count += 1
+        current_time = datetime.utcfromtimestamp(time_to_calculate + 3600)
+        avg_value = 0
+        if value_count != 0:
+            avg_value = sum_of_values / value_count
+        queue_size = self.sqs_client_wrapper.get_queue_size()
+        print("time: %s; average value: %f; number of values: %i; queue size: %s" %
+              (datetime.strftime(current_time, "%d/%m/%Y, %H:%M:%S"), avg_value, value_count, queue_size))
 
     def populate_locations_list(self):
         locations_data = []
