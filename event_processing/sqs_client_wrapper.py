@@ -39,14 +39,12 @@ class SQSClientWrapper:
         })
 
     def receive_message(self, max_number_of_messages):
-        return self.client.receive_message(QueueUrl=self.queue_url, WaitTimeSeconds=5,
-                                           MaxNumberOfMessages=max_number_of_messages)
+        return self.client.receive_message(QueueUrl=self.queue_url, MaxNumberOfMessages=max_number_of_messages)
 
     def create_delete_queue_request(self):
         self.client.delete_queue(QueueUrl=self.queue_url)
 
     def delete_received_messages(self, messages):
-
         entries = []
         for message in messages:
             entries.append({
@@ -59,5 +57,8 @@ class SQSClientWrapper:
             Entries=entries
         )
 
-        # print("Messages deleted successfully.")
-        # pprint.pp(entries)
+    def get_queue_size(self):
+        queue_attrs = self.client.get_queue_attributes(QueueUrl=self.queue_url,
+                                                       AttributeNames=['ApproximateNumberOfMessages'])
+        queue_size = queue_attrs['Attributes']['ApproximateNumberOfMessages']
+        return queue_size
