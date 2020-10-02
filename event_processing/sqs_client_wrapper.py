@@ -1,5 +1,4 @@
 import json
-import pprint
 
 import boto3
 import event_processing.main as main

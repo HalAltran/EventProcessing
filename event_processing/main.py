@@ -1,20 +1,21 @@
 import argparse
 import csv
 import json
-import pprint
 import boto3
 import time
+import matplotlib.pyplot as plt
 
-from datetime import timedelta
+from mpl_toolkits.mplot3d import Axes3D
 from datetime import datetime
 from event_processing.event import Event
 from event_processing.location import Location
+from event_processing.potential_source import PotentialSource
 from event_processing.sns_client_wrapper import SNSClientWrapper
 from event_processing.sqs_client_wrapper import SQSClientWrapper
 
 LOCATION_FILE_NAME = 'locations-part2.json'
 REGION_NAME = 'eu-west-1'
-RUN_TIME = 60 * 24
+RUN_TIME = 60 * 40
 TIME_TO_WAIT_FOR_EVENTS = 60 * 5
 
 
@@ -49,6 +50,8 @@ class EventProcessing:
         self.sqs_client_wrapper.create_delete_queue_request()
 
         self.write_event_data_to_file()
+
+        self.estimate_source_location()
 
     def process_messages(self):
 
@@ -130,18 +133,84 @@ class EventProcessing:
             cols.append(entries_1)
             cols.append(entries_2)
 
-        # rows = []
         rows = zip(*cols)
-        # for row in rows:
-        #     print(row)
 
-        # for col in cols:
-        #     print(col)
-        # pprint.pp(cols)
         with open('output.csv', 'w', newline='') as output_file:
             writer = csv.writer(output_file, delimiter=',')
             for row in rows:
                 writer.writerow(row)
+
+    def estimate_source_location(self):
+        location_list = self.locations.values()
+        x_min, x_max, y_min, y_max = 0, 0, 0, 0
+        for location in location_list:
+            if location.x < x_min:
+                x_min = location.x
+            if location.x > x_max:
+                x_max = location.x
+            if location.y < y_min:
+                y_min = location.y
+            if location.y > y_max:
+                y_max = location.y
+
+        x_step = (x_max - x_min) / 100
+        y_step = (y_max - y_min) / 100
+        x = x_min
+        # y = y_min
+
+        potential_sources = []
+        while x < x_max:
+            y = y_min
+            while y < y_max:
+
+                sum_of_inverse_squared_distances = 0
+                for location in location_list:
+                    inverse_distance_squared = 1 / ((x - location.x) ** 2 + (y - location.y) ** 2)
+                    sum_of_inverse_squared_distances += inverse_distance_squared
+
+                expected_value = 0
+                for location in location_list:
+                    location.update_overall_average_value()
+                    inverse_distance_squared = 1 / ((x - location.x) ** 2 + (y - location.y) ** 2)
+                    expected_value += location.overall_average_value * inverse_distance_squared / sum_of_inverse_squared_distances
+
+                potential_sources.append(PotentialSource(x, y, expected_value))
+
+                y += y_step
+            x += x_step
+
+        potential_sources.sort(key=lambda potential_source: potential_source.value, reverse=True)
+        expected_source = potential_sources[0]
+        print('x: %f, y: %f, value: %f' % (expected_source.x, expected_source.y, expected_source.value))
+        self.plot_graph(potential_sources)
+
+    def plot_graph(self, potential_sources):
+        fig = plt.figure()
+        ax = fig.add_subplot(111, projection='3d')
+
+        x_values = []
+        y_values = []
+        z_values = []
+
+        for location in self.locations.values():
+            x_values.append(location.x)
+            y_values.append(location.y)
+            z_values.append(location.overall_average_value)
+
+        p_x = []
+        p_y = []
+        p_z = []
+        for potential_source in potential_sources:
+            p_x.append(potential_source.x)
+            p_y.append(potential_source.y)
+            p_z.append(potential_source.value)
+
+        ax.scatter(x_values, y_values, z_values, color='b')
+        # ax.scatter(p_x, p_y, p_z, color='r')
+
+        plt.show()
+
+        print("Displaying graph")
 
     @staticmethod
     def parse_input_args():
@@ -155,11 +224,3 @@ class EventProcessing:
     @staticmethod
     def round_time_to_nearest_min(input_time):
         return int(input_time - input_time % 60)
-
-    # @staticmethod
-    # def round_time(dt=None, round_to=60):
-    #     if dt is None:
-    #         dt = datetime.now()
-    #     seconds = (dt.replace(tzinfo=None) - dt.min).seconds
-    #     rounding = (seconds + round_to / 2) // round_to * round_to
-    #     return dt + timedelta(0, rounding - seconds, -dt.microsecond)

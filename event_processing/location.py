@@ -13,6 +13,7 @@ class Location:
         self.latest_average_value = 0
         self.latest_event_count = 0
         self.average_value_at_time_dict = {}
+        self.overall_average_value = 0
 
     def update_average_values_at_time(self, time_to_calculate):
         self.latest_event_count = 0
@@ -29,3 +30,11 @@ class Location:
 
         formatted_time = datetime.strftime(datetime.utcfromtimestamp(time_to_calculate + 3600), "%d/%m/%Y %H:%M:%S")
         self.average_value_at_time_dict[formatted_time] = self.latest_average_value
+
+    def update_overall_average_value(self):
+        value_sum = 0
+        for event in self.events:
+            value_sum += event.value
+        value_count = len(self.events)
+        if value_count > 0:
+            self.overall_average_value = value_sum / value_count
